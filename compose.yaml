@@ -1,0 +1,96 @@
+name: hub
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+x-api-env: &api-env
+  APP_ENV: ${APP_ENV:-local}
+  APP_URL: ${APP_URL:-http://localhost:8080}
+  APP_SECRET: ${APP_SECRET:?Run setup first}
+  DATABASE_URL: postgresql://hub:${POSTGRES_PASSWORD:?Run setup first}@db:5432/hub
+  VOICE_ENABLED: ${VOICE_ENABLED:-false}
+  LIVEKIT_URL: http://livekit:7880
+  LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+  LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+  NO_PROXY: localhost,127.0.0.1,db,api,web,livekit
+services:
+  livekit:
+    image: livekit/livekit-server:v1.13.7
+    command: ["--config", "/etc/livekit.yaml"]
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:-unconfigured}: ${LIVEKIT_API_SECRET:-}"
+    volumes: ["./infra/livekit.yaml:/etc/livekit.yaml:ro"]
+    ports: ["127.0.0.1:7881:7881/tcp"]
+    profiles: ["voice"]
+    restart: unless-stopped
+    user: "1000:1000"
+    mem_limit: 1g
+    cpus: 1.5
+    logging: *logging
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:7880/"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+  db:
+    image: postgres:17.9-bookworm
+    environment:
+      POSTGRES_USER: hub
+      POSTGRES_DB: hub
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run setup first}
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    restart: unless-stopped
+    shm_size: 128mb
+    mem_limit: 1g
+    logging: *logging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hub -d hub"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  api:
+    image: hub-api:local
+    build:
+      context: .
+      dockerfile: infra/Dockerfile
+      target: api
+    environment: *api-env
+    depends_on:
+      db: { condition: service_healthy }
+    restart: unless-stopped
+    init: true
+    mem_limit: 768m
+    logging: *logging
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  web:
+    image: hub-web:local
+    build:
+      context: .
+      dockerfile: infra/Dockerfile
+      target: web
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on:
+      api: { condition: service_healthy }
+    restart: unless-stopped
+    mem_limit: 128m
+    logging: *logging
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+  migrate:
+    image: hub-api:local
+    environment: *api-env
+    command: ["npm", "run", "migrate"]
+    profiles: ["tools"]
+    depends_on:
+      db: { condition: service_healthy }
+    logging: *logging
+volumes:
+  postgres-data:

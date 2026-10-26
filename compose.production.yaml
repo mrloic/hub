@@ -1,0 +1,125 @@
+name: hub
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+x-api-env: &api-env
+  APP_ENV: production
+  APP_NAME: Hub
+  APP_URL: https://hub.mrloic.ru
+  PROXY_SECRET: ${PROXY_SECRET:?Prepare production first}
+  APP_SECRET: ${APP_SECRET:?Run setup first}
+  DATABASE_URL: postgresql://hub:${POSTGRES_PASSWORD:?Run setup first}@db:5432/hub
+  VOICE_ENABLED: "true"
+  LIVEKIT_URL: http://livekit:7880
+  LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?Prepare production first}
+  LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?Prepare production first}
+  NO_PROXY: localhost,127.0.0.1,db,api,web,livekit
+services:
+  livekit:
+    image: livekit/livekit-server:v1.13.7
+    command: ["--config", "/etc/livekit.yaml"]
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?Prepare production first}: ${LIVEKIT_API_SECRET:?Prepare production first}"
+    volumes: ["./.runtime/production/livekit.yaml:/etc/livekit.yaml:ro"]
+    ports: ["0.0.0.0:7882:7882/udp"]
+    networks:
+      media:
+        ipv4_address: 172.30.224.10
+    restart: unless-stopped
+    user: "1000:1000"
+    mem_limit: 1g
+    cpus: 1.5
+    logging: *logging
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:7880/"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+  db:
+    image: postgres:17.9-bookworm
+    environment:
+      POSTGRES_USER: hub
+      POSTGRES_DB: hub
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run setup first}
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    restart: unless-stopped
+    networks: [data]
+    shm_size: 128mb
+    mem_limit: 1g
+    logging: *logging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hub -d hub"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  api:
+    image: hub-api:production
+    build:
+      context: .
+      dockerfile: infra/Dockerfile
+      target: api
+    environment: *api-env
+    networks: [front, data, media]
+    depends_on:
+      db: { condition: service_healthy }
+      livekit: { condition: service_healthy }
+    restart: unless-stopped
+    init: true
+    mem_limit: 768m
+    logging: *logging
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  web:
+    image: hub-web:production
+    build:
+      context: .
+      dockerfile: infra/Dockerfile
+      target: web-production
+    ports: ["0.0.0.0:80:80/tcp", "0.0.0.0:443:443/tcp"]
+    environment:
+      PROXY_SECRET: ${PROXY_SECRET:?Prepare production first}
+    command: ["run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+    volumes: ["caddy-data:/data", "caddy-config:/config"]
+    networks:
+      front:
+      media:
+        ipv4_address: 172.30.224.2
+    depends_on:
+      api: { condition: service_healthy }
+    restart: unless-stopped
+    mem_limit: 128m
+    logging: *logging
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+  migrate:
+    image: hub-api:production
+    environment: *api-env
+    networks: [front, data, media]
+    command: ["npm", "run", "migrate"]
+    profiles: ["tools"]
+    depends_on:
+      db: { condition: service_healthy }
+    logging: *logging
+volumes:
+  postgres-data:
+    external: true
+    name: ${POSTGRES_VOLUME:?Existing database volume is required}
+  caddy-data:
+  caddy-config:
+networks:
+  front:
+  data:
+    internal: true
+  media:
+    ipam:
+      config:
+        - subnet: 172.30.224.0/24
+          ip_range: 172.30.224.128/25

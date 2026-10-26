@@ -1,0 +1,8 @@
+FROM hub-api:local AS source
+FROM mcr.microsoft.com/playwright:v1.63.0-noble
+WORKDIR /app
+COPY --from=source /app /app
+COPY tests ./tests
+COPY playwright.config.ts ./playwright.config.ts
+COPY scripts/with-media-tunnel.mjs ./scripts/with-media-tunnel.mjs
+CMD ["npm", "run", "test:e2e"]

@@ -1,0 +1,94 @@
+{
+  admin off
+  servers :443 {
+    protocols h1 h2
+    listener_wrappers {
+      layer4 {
+        @turn tls sni turn.mrloic.ru
+        route @turn {
+          tls
+          proxy livekit:5349 {
+            proxy_protocol v2
+          }
+        }
+      }
+      tls
+    }
+  }
+  log {
+    format filter {
+      wrap json
+      fields {
+        request delete
+      }
+    }
+  }
+}
+(public_tls) {
+  tls {
+    issuer acme {
+      disable_tlsalpn_challenge
+    }
+  }
+}
+(proxy_headers) {
+  header_up X-Hub-Proxy {$PROXY_SECRET}
+  header_up X-Hub-Client-IP {remote_host}
+}
+(security) {
+  header {
+    -Server
+    Strict-Transport-Security "max-age=31536000"
+    X-Content-Type-Options nosniff
+    Referrer-Policy no-referrer
+    X-Frame-Options DENY
+    Permissions-Policy "camera=(), display-capture=(self), microphone=(self)"
+    Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://rtc.mrloic.ru wss://rtc.mrloic.ru; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+  }
+}
+hub.mrloic.ru {
+  import public_tls
+  import security
+  root * /srv
+  @api path /api /api/* /socket.io /socket.io/*
+  handle @api {
+    reverse_proxy api:3000 {
+      import proxy_headers
+    }
+  }
+  @private path /livekit /livekit/* /twirp /twirp/* /rtc /rtc/*
+  handle @private {
+    respond 404
+  }
+  @assets path /assets/* *.js *.css *.map *.ico *.png *.svg *.woff2
+  handle @assets {
+    file_server
+  }
+  handle {
+    try_files {path} /index.html
+    header Cache-Control no-cache
+    file_server
+  }
+}
+rtc.mrloic.ru {
+  import public_tls
+  import security
+  @signal path /livekit/rtc /livekit/rtc/v1 /livekit/rtc/validate /livekit/rtc/v1/validate
+  handle @signal {
+    reverse_proxy api:3000 {
+      import proxy_headers
+    }
+  }
+  handle {
+    respond 404
+  }
+}
+# This site enables automatic certificate management for the L4 TURN listener.
+turn.mrloic.ru {
+  import public_tls
+  respond 404
+}
+:8080 {
+  respond /healthz "ok" 200
+  respond 404
+}

@@ -1,0 +1,34 @@
+# Overlay for the isolated hub-test project. No host ports, real authenticated TURN.
+services:
+  turn-proxy:
+    image: livekit/caddyl4:v2.11.3@sha256:9dd090159a6042a907dbff0ce9dda27a21d2a559dc7b03b60a8e6b1b60b8348e
+    command: ["run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+    environment: {XDG_CONFIG_HOME: /config, XDG_DATA_HOME: /data}
+    tmpfs: ["/config:uid=1000,gid=1000", "/data:uid=1000,gid=1000"]
+    user: "1000:1000"
+    mem_limit: 128m
+    volumes: ["./infra/Caddyfile.turn-test:/etc/caddy/Caddyfile:ro"]
+    networks:
+      default:
+      media:
+        ipv4_address: 172.30.225.2
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  livekit:
+    volumes:
+      - ./.runtime/checks/livekit.yaml:/etc/livekit.yaml:ro
+    networks: !override
+      media:
+        ipv4_address: 172.30.225.10
+  api:
+    networks: [default, media]
+networks:
+  media:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.225.0/24
+          ip_range: 172.30.225.128/25

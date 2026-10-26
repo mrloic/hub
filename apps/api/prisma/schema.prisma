@@ -1,0 +1,107 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+}
+enum Role {
+  OWNER
+  CO_OWNER
+  ADMIN
+  MEMBER
+}
+model User {
+  id String @id @default(uuid())
+  username String @unique
+  displayName String
+  passwordHash String
+  createdAt DateTime @default(now())
+  memberships Membership[]
+  sessions Session[]
+  messages Message[]
+}
+model Session {
+  id String @id
+  userId String
+  expiresAt DateTime
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([expiresAt])
+}
+model Community {
+  id String @id @default(uuid())
+  name String
+  createdAt DateTime @default(now())
+  memberships Membership[]
+  channels Channel[]
+  invites Invite[]
+}
+model Membership {
+  communityId String
+  userId String
+  role Role @default(MEMBER)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@id([communityId, userId])
+  @@index([userId])
+}
+enum ChannelType {
+  TEXT
+  VOICE
+}
+model Channel {
+  type ChannelType @default(TEXT)
+  id String @id @default(uuid())
+  communityId String
+  name String
+  createdAt DateTime @default(now())
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  messages Message[]
+  @@index([communityId])
+}
+model Message {
+  id String @id @default(uuid())
+  sequence BigInt @unique @default(autoincrement())
+  channelId String
+  authorId String
+  clientId String
+  content String
+  createdAt DateTime @default(now())
+  editedAt DateTime?
+  deletedAt DateTime?
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id])
+  @@unique([authorId, clientId])
+  @@index([channelId, sequence])
+}
+model Invite {
+  id String @id @default(uuid())
+  token String @unique
+  communityId String
+  expiresAt DateTime
+  maxUses Int
+  uses Int @default(0)
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  @@index([communityId])
+}
+model RateLimit {
+  key String @id
+  count Int
+  expiresAt DateTime
+  @@index([expiresAt])
+}
+
+// No cascading foreign keys: retain revocation work until LiveKit removal succeeds.
+model VoiceLease {
+  userId String @id
+  id String @unique @default(uuid())
+  channelId String
+  communityId String
+  sessionId String
+  room String
+  revoked Boolean @default(false)
+  createdAt DateTime @default(now())
+  @@index([communityId])
+  @@index([sessionId])
+}

@@ -1,0 +1,68 @@
+# Generated peer deny list allows TURN to relay only to this SFU, never the Internet/LAN.
+port: 7880
+bind_addresses: [0.0.0.0]
+rtc:
+  tcp_port: 0
+  udp_port: 7882
+  use_external_ip: false
+  node_ip: <PUBLIC_IPV4>
+  advertise_internal_ip: true
+  enable_loopback_candidate: false
+  ips:
+    includes: [172.30.224.10/32]
+  stun_servers: []
+turn:
+  enabled: true
+  domain: turn.mrloic.ru
+  tls_port: 5349
+  udp_port: 0
+  external_tls: true
+  proxy_protocol: true
+  proxy_protocol_trusted_cidrs: [172.30.224.2/32]
+  relay_range_start: 30000
+  relay_range_end: 30199
+  ttl_seconds: 300
+  per_user_relay_allocation_limit: 4
+  allow_restricted_peer_cidrs: [172.30.224.10/32]
+  deny_peer_cidrs:
+    - 0.0.0.0/1
+    - 192.0.0.0/2
+    - 128.0.0.0/3
+    - 176.0.0.0/4
+    - 160.0.0.0/5
+    - 168.0.0.0/6
+    - 174.0.0.0/7
+    - 173.0.0.0/8
+    - 172.128.0.0/9
+    - 172.64.0.0/10
+    - 172.32.0.0/11
+    - 172.0.0.0/12
+    - 172.16.0.0/13
+    - 172.24.0.0/14
+    - 172.28.0.0/15
+    - 172.31.0.0/16
+    - 172.30.0.0/17
+    - 172.30.128.0/18
+    - 172.30.192.0/19
+    - 172.30.240.0/20
+    - 172.30.232.0/21
+    - 172.30.228.0/22
+    - 172.30.226.0/23
+    - 172.30.225.0/24
+    - 172.30.224.128/25
+    - 172.30.224.64/26
+    - 172.30.224.32/27
+    - 172.30.224.16/28
+    - 172.30.224.0/29
+    - 172.30.224.12/30
+    - 172.30.224.8/31
+    - 172.30.224.11/32
+    - "::/0"
+room:
+  auto_create: false
+  empty_timeout: 60
+  departure_timeout: 15
+  max_participants: 20
+logging:
+  level: error
+  pion_level: error

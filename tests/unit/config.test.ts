@@ -1,0 +1,22 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+test("production требует HTTPS; local требует loopback HTTP; секрет обязателен", async () => {
+  process.env.APP_SECRET = "test_only_".repeat(8);
+  process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/hub_test";
+  process.env.APP_ENV = "local";
+  process.env.APP_URL = "http://localhost:8080";
+  const { readConfig } = await import("../../apps/api/src/common/config.js");
+  assert.equal(readConfig().secure, false);
+  process.env.PROXY_SECRET = "test_proxy_".repeat(8);
+  process.env.APP_ENV = "production";
+  assert.throws(readConfig, /HTTPS/);
+  process.env.APP_URL = "https://hub.mrloic.ru";
+  assert.equal(readConfig().secure, true);
+  process.env.APP_ENV = "local";
+  assert.throws(readConfig, /локальный/);
+  process.env.APP_URL = "ftp://localhost:8080";
+  assert.throws(readConfig, /HTTP/);
+  process.env.APP_URL = "http://localhost:8080";
+  process.env.APP_SECRET = "short";
+  assert.throws(readConfig, /APP_SECRET/);
+});

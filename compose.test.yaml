@@ -1,0 +1,94 @@
+name: hub-test
+x-env: &test-env
+  APP_ENV: test
+  APP_URL: http://localhost:8080
+  APP_SECRET: hub_test_only_not_a_production_secret_012345678901234567890123456789
+  DATABASE_URL: postgresql://hub:hub_test_only@db:5432/hub_test
+  TEST_BASE_URL: http://localhost:8080
+  VOICE_ENABLED: "true"
+  LIVEKIT_URL: http://livekit:7880
+  LIVEKIT_API_KEY: hub_test_voice
+  LIVEKIT_API_SECRET: hub_test_voice_secret_only_01234567890123456789012345
+  NO_PROXY: localhost,127.0.0.1,db,api,web,livekit
+services:
+  livekit:
+    image: livekit/livekit-server:v1.13.7
+    command: ["--config", "/etc/livekit.yaml"]
+    environment:
+      LIVEKIT_KEYS: "hub_test_voice: hub_test_voice_secret_only_01234567890123456789012345"
+    volumes: ["./infra/livekit.yaml:/etc/livekit.yaml:ro"]
+    mem_limit: 768m
+    user: "1000:1000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:7880/"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  db:
+    image: postgres:17.9-bookworm
+    environment:
+      POSTGRES_USER: hub
+      POSTGRES_PASSWORD: hub_test_only
+      POSTGRES_DB: hub_test
+    volumes: ["test-postgres:/var/lib/postgresql/data"]
+    mem_limit: 768m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hub -d hub_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  api:
+    image: hub-api:local
+    environment: *test-env
+    init: true
+    mem_limit: 768m
+    depends_on:
+      db: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  production-api:
+    image: hub-api:local
+    environment:
+      <<: *test-env
+      APP_ENV: production
+      APP_URL: https://hub.mrloic.ru
+      PROXY_SECRET: test_only_proxy_secret_0123456789012345678901234567890123456789
+    init: true
+    mem_limit: 768m
+    depends_on:
+      db: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  web:
+    image: hub-web:local
+    depends_on:
+      api: { condition: service_healthy }
+    mem_limit: 128m
+  migrate:
+    image: hub-api:local
+    environment: *test-env
+    command: ["npm", "run", "migrate"]
+    profiles: ["tools"]
+    depends_on:
+      db: { condition: service_healthy }
+  runner:
+    image: hub-test-runner:local
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.test
+    environment: *test-env
+    init: true
+    working_dir: /app
+    volumes: ["test-browser-state:/tmp/hub-e2e"]
+    mem_limit: 2g
+    shm_size: 256mb
+    profiles: ["tools"]
+volumes:
+  test-postgres:
+  test-browser-state:

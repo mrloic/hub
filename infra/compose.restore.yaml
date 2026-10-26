@@ -1,0 +1,17 @@
+name: hub-restore
+services:
+  db:
+    image: postgres:17.9-bookworm
+    environment:
+      POSTGRES_USER: hub_restore
+      POSTGRES_DB: hub_restore
+      POSTGRES_PASSWORD: ${RESTORE_PASSWORD:?Set a separate restore password}
+    volumes: ["restore-postgres:/var/lib/postgresql/data"]
+    mem_limit: 768m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hub_restore -d hub_restore"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+volumes:
+  restore-postgres:

@@ -1,0 +1,19 @@
+port: 7880
+bind_addresses: ["0.0.0.0"]
+rtc:
+  tcp_port: 7881
+  force_tcp: true
+  use_external_ip: false
+  node_ip: 127.0.0.1
+  # Advertise node_ip as a NAT mapping of the container interface. An actual
+  # container loopback candidate would not receive Docker-forwarded ICE traffic.
+  enable_loopback_candidate: false
+  stun_servers: []
+room:
+  auto_create: false
+  empty_timeout: 60
+  departure_timeout: 15
+  max_participants: 20
+logging:
+  level: error
+  pion_level: error

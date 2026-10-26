@@ -1,0 +1,35 @@
+{
+  auto_https off
+  admin off
+  log {
+    format filter {
+      wrap json
+      fields {
+        request delete
+      }
+    }
+  }
+}
+:8080 {
+  root * /srv
+  header {
+    X-Content-Type-Options nosniff
+    Referrer-Policy no-referrer
+    X-Frame-Options DENY
+    Permissions-Policy "camera=(), display-capture=(self), microphone=(self)"
+    Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+  }
+  @api path /api /api/* /socket.io /socket.io/* /livekit /livekit/*
+  handle @api {
+    reverse_proxy api:3000
+  }
+  @assets path /assets/* *.js *.css *.map *.ico *.png *.svg *.woff2
+  handle @assets {
+    file_server
+  }
+  handle {
+    try_files {path} /index.html
+    header Cache-Control "no-cache"
+    file_server
+  }
+}
